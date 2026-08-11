@@ -136,6 +136,11 @@ header{position:sticky;top:0;z-index:40;background:var(--navy);color:var(--cream
 .rydapply .e{display:block;font-family:var(--ar2);font-size:10px;font-weight:600;opacity:.75}
 .rydapply:disabled{background:var(--cream-2);color:#a9afbc;cursor:default}
 .rydmini{font-size:10.5px;color:#8b93a5;text-align:center;margin-top:7px;line-height:1.5}
+.reco{grid-column:1/-1;background:#f2f7f3;border:1.5px solid var(--ok);border-radius:10px;padding:10px 13px;display:flex;flex-direction:column;gap:1px;position:relative}
+.reco .reco-en{font-family:var(--lat);font-size:12px;font-weight:700;color:var(--ok);letter-spacing:.01em}
+.reco .reco-ar{font-family:var(--ar2);font-size:10px;color:#5e8570;font-weight:500}
+.reco .reco-val{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--navy);margin-top:4px;line-height:1.3}
+.reco .reco-val small{font-family:var(--ar2);font-size:10px;color:var(--muted);font-weight:500}
 .fieldhint{grid-column:1/-1;background:#fffdf3;border:1px solid var(--gold);border-radius:9px;padding:9px 12px;line-height:1.5;color:#6a5015}
 .fieldhint .fh-en{display:block;font-family:var(--lat);font-size:11.5px;font-weight:500;direction:ltr;text-align:right}
 .fieldhint .fh-ar{display:block;font-family:var(--ar2);font-size:10px;color:#8b7340;margin-top:2px}
@@ -346,7 +351,7 @@ const FOOT_REF="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAUDBAQEA
 const REF_IMAGES={body_map:BODY_REF, foot_type_img:FOOT_REF};
 const SCHEMA=[
  {n:1,ar:"بيانات العميل",en:"Client Demographics",fields:[
-   ["name","الاسم","Name","text"],["pronouns","الضمائر","Pronouns","text"],
+   ["name","الاسم","Name","text"],
    ["gender","الجنس","Gender","select:ذكر Male|أنثى Female"],["age","العمر","Age","number"],
    ["city","المدينة","City","text"],
    ["phone","الجوال","Phone","tel"],["email","الإيميل","Email","email"],["date","تاريخ الفت","Fit date","date"],
@@ -358,7 +363,6 @@ const SCHEMA=[
  ]},
  {n:3,ar:"معلومات الركوب",en:"Cycling Specific Information",fields:[
    ["avg_hours","متوسط الساعات بالموسم/أسبوع","Avg in-season hrs/wk","number"],["avg_dist","متوسط المسافة/جولة","Avg distance/ride","text"],
-   ["downhill","أقصى سرعة نزول","Fastest downhill speed","text"],
    ["describe","صف نفسك كدرّاج","Describe yourself as a cyclist","textarea"],
    ["strengths","نقاط القوة","Cycling strengths","textarea"],["weakness","نقاط الضعف","Cycling weakness","textarea"],
    ["disciplines","التخصصات/الفئات","Cycling disciplines","textarea"],["reason_fit","سبب الفت وخبرة الفت السابقة","Reason for fit & experience","textarea"],
@@ -371,6 +375,11 @@ const SCHEMA=[
  {n:5,ar:"القياسات البدنية",en:"Physical Assessment",fields:[
    ["height","الطول","Height","text"],["weight_range","نطاق الوزن","Weight range","text"],
    ["inseam","طول الساق الداخلي (سم)","Inseam cm","number"],["shoulder_w","عرض الكتف (سم)","Shoulder width cm","number"],
+   ["reco:bar","عرض المقود المقترح","Recommended handlebar width"],
+   ["sub:","عظام الجلوس والسرج","Sit Bones & Saddle"],
+   ["hint:","قِس عرض عظام الجلوس (مم) بجهاز القياس أو طريقة الإسفنج/الكرتون. عرض السرج المقترح = عرض عظام الجلوس + هامش حسب وضعية الركوب.","Measure sit-bone width (mm) with the gauge or the foam/cardboard method. Suggested saddle width = sit-bone width + a margin based on riding posture."],
+   ["sit_bone","عرض عظام الجلوس (مم)","Sit-bone width (mm)","number"],
+   ["reco:saddle","عرض السرج المقترح","Recommended saddle width"],
    ["sub:","تقييم القدم","Foot Assessment"],
    ["foot_type_img","نوع القدم (صورة)","Foot type photo","img"],
    ["foot_type","نوع القدم","Foot type","select:مسطحة Flat|منكبة Pronated|طبيعية Normal|قوس عالي High-arch"],
@@ -382,6 +391,7 @@ const SCHEMA=[
    ["w_arch_R","طول القوس بوزن (يمين)","Weighted arch R","number"],["w_arch_L","طول القوس بوزن (يسار)","Weighted arch L","number"],
    ["w_wid_R","عرض القدم بوزن (يمين)","Weighted width R","text"],["w_wid_L","عرض القدم بوزن (يسار)","Weighted width L","text"],
    ["arch_ht_R","ارتفاع القوس (يمين)","R arch height","select:منخفض Low|متوسط Med|عالي High"],["arch_ht_L","ارتفاع القوس (يسار)","L arch height","select:منخفض Low|متوسط Med|عالي High"],
+   ["reco:shoe","مقاس الحذاء المقترح","Recommended shoe size"],
    ["shoe_size","مقاس/ماركة الحذاء المقترح","Suggested shoe size/brand","text"],["stance_w","عرض الوقفة","Stance width","text"],
    ["spacers_wedges","سبيسرز/ويدجز","Spacers/Wedges","text"],["shoe_support","توصيات دعم القدم","Shoe support recommendations","textarea"],
  ]},
@@ -458,7 +468,7 @@ function renderForm(){
       const [key,ar,en,type,hint]=f;
       const grp=(key==='sub:'||key==='hint:')?f[3]:f[4];
       const grpAttr=grp==='tt'?{'data-grp':'tt'}:{};
-      if(key==='sub:'){body.appendChild(grid);grid=el('div',{class:'grid'});body.appendChild(el('div',Object.assign({class:'subhead',html:`<span class="sub-en">${en}</span> <span class="sub-ar">${ar}</span>`},grpAttr)));return;}if(key==='hint:'){body.appendChild(grid);grid=el('div',{class:'grid'});body.appendChild(el('div',{class:'fieldhint',html:`<span class="fh-en">${en}</span><span class="fh-ar">${ar}</span>`}));return;}
+      if(key==='sub:'){body.appendChild(grid);grid=el('div',{class:'grid'});body.appendChild(el('div',Object.assign({class:'subhead',html:`<span class="sub-en">${en}</span> <span class="sub-ar">${ar}</span>`},grpAttr)));return;}if(key==='hint:'){body.appendChild(grid);grid=el('div',{class:'grid'});body.appendChild(el('div',{class:'fieldhint',html:`<span class="fh-en">${en}</span><span class="fh-ar">${ar}</span>`}));return;}if(key&&key.startsWith('reco:')){body.appendChild(grid);grid=el('div',{class:'grid'});const rk=key.split(':')[1];body.appendChild(el('div',{class:'reco',id:'reco_'+rk,html:`<span class="reco-en">${en}</span><span class="reco-ar">${ar}</span><span class="reco-val" id="recoval_${rk}">—</span>`}));return;}
       const wrap=el('div',Object.assign({class:'f'+((type==='textarea'||type==='img'||(type&&type.startsWith('multi')))?' full':'')},grpAttr));
       wrap.appendChild(el('label',{html:`<span class="en-main">${en}</span> <span class="ar-sub">${ar}</span>`}));
       let inp;
@@ -500,7 +510,7 @@ function moveRydenPanel(){
 }
 function handleImg(e,key,tw){const file=e.target.files[0];if(!file)return;const rd=new FileReader();rd.onload=ev=>{const img=new Image();img.onload=()=>{const max=1000;let w=img.width,h=img.height;if(w>max||h>max){const s=Math.min(max/w,max/h);w*=s;h*=s;}const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);const data=cv.toDataURL('image/jpeg',0.72);current._imgs[key]=data;renderThumb(key,data,tw);};img.src=ev.target.result;};rd.readAsDataURL(file);}
 function renderThumb(key,data,wrap){wrap.innerHTML='';if(!data)return;const t=el('div',{class:'thumb'});const im=el('img',{src:data});const rm=el('button',{class:'rm',html:'×'});rm.onclick=()=>{delete current._imgs[key];wrap.innerHTML='';};t.appendChild(im);t.appendChild(rm);wrap.appendChild(t);}
-function collect(){const d={_imgs:current._imgs||{}};SCHEMA.forEach(sec=>sec.fields.forEach(f=>{const key=f[0],type=f[3];if(key==='sub:'||key==='hint:'||type==='img')return;if(type&&type.startsWith('multi:')){d[key]=[...document.querySelectorAll(`[data-group="fld_${key}"]:checked`)].map(c=>c.value).join('، ');}else{const e=document.getElementById('fld_'+key);d[key]=e?e.value:'';}}));return d;}
+function collect(){const d={_imgs:current._imgs||{}};SCHEMA.forEach(sec=>sec.fields.forEach(f=>{const key=f[0],type=f[3];if(key==='sub:'||key==='hint:'||(key&&key.startsWith('reco:'))||type==='img')return;if(type&&type.startsWith('multi:')){d[key]=[...document.querySelectorAll(`[data-group="fld_${key}"]:checked`)].map(c=>c.value).join('، ');}else{const e=document.getElementById('fld_'+key);d[key]=e?e.value:'';}}));return d;}
 
 function applyBikeType(){
   const bt=(document.getElementById('fld_bike_type')||{}).value||'';
@@ -509,10 +519,10 @@ function applyBikeType(){
     el.style.display = isTT ? '' : 'none';
   });
 }
-function fill(d){current._imgs=d._imgs?JSON.parse(JSON.stringify(d._imgs)):{};SCHEMA.forEach(sec=>sec.fields.forEach(f=>{const key=f[0],type=f[3];if(key==='sub:'||key==='hint:')return;if(type==='img'){const tw=document.getElementById('thumb_'+key);if(tw)renderThumb(key,current._imgs[key],tw);return;}if(type&&type.startsWith('multi:')){const vals=(d[key]||'').split('، ');document.querySelectorAll(`[data-group="fld_${key}"]`).forEach(c=>c.checked=vals.includes(c.value));}else{const e=document.getElementById('fld_'+key);if(e)e.value=d[key]||'';}}));}
-function newFit(){current={_imgs:{}};fill({_imgs:{}});const t=document.getElementById('fld_date');if(t)t.value=new Date().toISOString().slice(0,10);document.querySelectorAll('.sec').forEach((s,i)=>s.classList.toggle('collapsed',i>0));window.scrollTo(0,0);applyBikeType();renderValidation();toast('New form ready · نموذج جديد');}
+function fill(d){current._imgs=d._imgs?JSON.parse(JSON.stringify(d._imgs)):{};SCHEMA.forEach(sec=>sec.fields.forEach(f=>{const key=f[0],type=f[3];if(key==='sub:'||key==='hint:'||(key&&key.startsWith('reco:')))return;if(type==='img'){const tw=document.getElementById('thumb_'+key);if(tw)renderThumb(key,current._imgs[key],tw);return;}if(type&&type.startsWith('multi:')){const vals=(d[key]||'').split('، ');document.querySelectorAll(`[data-group="fld_${key}"]`).forEach(c=>c.checked=vals.includes(c.value));}else{const e=document.getElementById('fld_'+key);if(e)e.value=d[key]||'';}}));}
+function newFit(){current={_imgs:{}};fill({_imgs:{}});const t=document.getElementById('fld_date');if(t)t.value=new Date().toISOString().slice(0,10);document.querySelectorAll('.sec').forEach((s,i)=>s.classList.toggle('collapsed',i>0));window.scrollTo(0,0);applyBikeType();computeRecos();renderValidation();toast('New form ready · نموذج جديد');}
 function saveFit(){const d=collect();if(!d.name){toast('⚠ Enter the client name first');return;}d._id=current._id||('c'+Date.now());d._saved=new Date().toISOString();const i=clients.findIndex(c=>c._id===d._id);if(i>=0)clients[i]=d;else clients.push(d);current=d;saveStore();renderClients();toast('✅ Saved '+d.name);}
-function loadFit(id){current=JSON.parse(JSON.stringify(clients.find(c=>c._id===id)||{_imgs:{}}));fill(current);switchView('form');document.querySelectorAll('.sec').forEach(s=>s.classList.remove('collapsed'));window.scrollTo(0,0);applyBikeType();renderValidation();toast('File opened · تم الفتح');}
+function loadFit(id){current=JSON.parse(JSON.stringify(clients.find(c=>c._id===id)||{_imgs:{}}));fill(current);switchView('form');document.querySelectorAll('.sec').forEach(s=>s.classList.remove('collapsed'));window.scrollTo(0,0);applyBikeType();computeRecos();renderValidation();toast('File opened · تم الفتح');}
 function delFit(id){if(!confirm('حذف هذا العميل نهائياً؟'))return;clients=clients.filter(c=>c._id!==id);saveStore();renderClients();toast('Deleted · تم الحذف');}
 function renderClients(){const list=document.getElementById('clientsList');list.innerHTML='';if(!clients.length){list.appendChild(el('div',{class:'empty',html:'No saved clients yet.<br>Start a new fit and save it.<br><span style="font-size:11px;color:#8b93a5">ابدأ فت جديد واحفظه</span>'}));return;}clients.slice().reverse().forEach(c=>{const row=el('div',{class:'client'});const info=el('div',{});info.appendChild(el('div',{class:'nm'},[document.createTextNode(c.name||'—')]));info.appendChild(el('div',{class:'dt'},[document.createTextNode((c.date||'')+' · '+(c.disciplines||''))]));const acts=el('div',{class:'acts'});const b1=el('button',{class:'minibtn load'});b1.textContent='Open';b1.onclick=()=>loadFit(c._id);const b2=el('button',{class:'minibtn pdf'});b2.textContent='PDF';b2.onclick=()=>{loadFit(c._id);setTimeout(exportPDF,350);};const b3=el('button',{class:'minibtn del'});b3.textContent='Delete';b3.onclick=()=>delFit(c._id);acts.append(b1,b2,b3);row.append(info,acts);list.appendChild(row);});}
 function switchView(v){document.getElementById('valFab').style.display=v==='form'?'flex':'none';document.getElementById('formView').style.display=v==='form'?'block':'none';document.getElementById('clientsView').style.display=v==='clients'?'block':'none';document.getElementById('actionBar').style.display=v==='form'?'flex':'none';if(v==='clients')renderClients();window.scrollTo(0,0);}
@@ -901,7 +911,75 @@ RYD_IDS.forEach(id=>{
   const e=document.getElementById(id);
   if(e) e.addEventListener('input',rydCalc);
 });
+
+/* ================= RECOMMENDATION ENGINE ================= */
+function num(id){const e=document.getElementById('fld_'+id);if(!e)return null;const v=parseFloat(e.value);return isNaN(v)?null:v;}
+function setReco(key,mainHtml){
+  const el=document.getElementById('recoval_'+key);
+  if(el) el.innerHTML = mainHtml || '—';
+}
+function roundToStock(v,stock){return stock.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);}
+
+function computeRecos(){
+  /* ---- Saddle width from sit bones (road: +20mm, range +15..+25) ---- */
+  const sb=num('sit_bone');
+  if(sb!==null && sb>50 && sb<200){
+    const stock=[130,135,140,143,145,150,155,160];
+    const target=sb+20, lo=sb+15, hi=sb+25;
+    const pick=roundToStock(target,stock);
+    setReco('saddle', pick+' mm <small>(target '+Math.round(lo)+'–'+Math.round(hi)+' mm · road) · نطاق '+Math.round(lo)+'–'+Math.round(hi)+'</small>');
+  } else setReco('saddle','—');
+
+  /* ---- Handlebar width from shoulder width (match ±2cm) ---- */
+  const sh=num('shoulder_w');   /* stored in cm */
+  if(sh!==null && sh>25 && sh<60){
+    const shMm=sh*10;
+    const stock=[380,400,420,440,460];
+    const pick=roundToStock(shMm,stock);
+    const lo=Math.round(shMm-20), hi=Math.round(shMm+20);
+    setReco('bar', pick+' mm <small>(shoulder '+Math.round(shMm)+' mm ±20 · narrower=aero) · '+lo+'–'+hi+' مم</small>');
+  } else setReco('bar','—');
+
+  /* ---- Shoe size ----
+     Per Brannock: size = the LARGER of length vs arch, for each foot.
+     Take the longest reading per foot, then AVERAGE the two feet.
+     Readings here are Brannock/shoe-size scale (e.g. 42, 42.5), so the
+     average IS the recommended size — no unit conversion.                */
+  const rightVals=['w_len_R','w_arch_R','uw_len_R','uw_arch_R'].map(num).filter(v=>v!==null);
+  const leftVals =['w_len_L','w_arch_L','uw_len_L','uw_arch_L'].map(num).filter(v=>v!==null);
+  const rightMax = rightVals.length ? Math.max(...rightVals) : null;
+  const leftMax  = leftVals.length  ? Math.max(...leftVals)  : null;
+
+  if(rightMax!==null || leftMax!==null){
+    const feet=[rightMax,leftMax].filter(v=>v!==null);
+    const avg = feet.reduce((a,b)=>a+b,0)/feet.length;
+    const size = Math.round(avg*2)/2;          /* nearest half size */
+    /* asymmetry note if the two feet differ */
+    let note='';
+    if(rightMax!==null && leftMax!==null){
+      const diff=Math.abs(rightMax-leftMax);
+      if(diff>=1) note=' · R '+ (Math.round(rightMax*2)/2) +' / L '+ (Math.round(leftMax*2)/2) +' — size to larger';
+      else note=' · R '+(Math.round(rightMax*2)/2)+' / L '+(Math.round(leftMax*2)/2);
+    } else {
+      note=' · one foot measured';
+    }
+    /* width note from width reading (also Brannock letter or number) */
+    const wids=['w_wid_R','w_wid_L','uw_wid_R','uw_wid_L'].map(num).filter(v=>v!==null);
+    let wnote='';
+    if(wids.length){const wmax=Math.max(...wids);
+      /* only interpret if numeric mm-ish; skip letter widths handled as text */
+      if(wmax>=100) wnote=' · wide/عريض'; }
+    setReco('shoe', '~'+size+' <small>(avg of both feet, longest reading each'+note+wnote+')</small>');
+  } else setReco('shoe','—');
+}
+
+/* recompute whenever a driving field changes */
+['sit_bone','shoulder_w','w_len_R','w_len_L','uw_len_R','uw_len_L','w_arch_R','w_arch_L','uw_arch_R','uw_arch_L','w_wid_R','w_wid_L','uw_wid_R','uw_wid_L'].forEach(id=>{
+  document.addEventListener('input',e=>{if(e.target&&e.target.id==='fld_'+id)computeRecos();});
+});
+
 rydCalc();   /* runs after the consts above are initialised */
+computeRecos();
 
 </script>
 </body>
