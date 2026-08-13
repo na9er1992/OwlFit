@@ -144,6 +144,11 @@ header{position:sticky;top:0;z-index:40;background:var(--navy);color:var(--cream
 .fieldhint{grid-column:1/-1;background:#fffdf3;border:1px solid var(--gold);border-radius:9px;padding:9px 12px;line-height:1.5;color:#6a5015}
 .fieldhint .fh-en{display:block;font-family:var(--lat);font-size:11.5px;font-weight:500;direction:ltr;text-align:right}
 .fieldhint .fh-ar{display:block;font-family:var(--ar2);font-size:10px;color:#8b7340;margin-top:2px}
+.syncbadge{display:block;text-align:center;font-family:var(--lat);font-size:11px;font-weight:600;padding:7px 12px;border-radius:9px;margin-bottom:11px;letter-spacing:.01em}
+.syncbadge.ok{background:rgba(47,107,79,.10);color:#2f6b4f;border:1px solid #2f6b4f}
+.syncbadge.sync{background:rgba(201,150,46,.12);color:#946c14;border:1px solid var(--gold)}
+.syncbadge.off{background:#f1efe8;color:var(--muted);border:1px solid var(--line)}
+.syncbadge.err{background:rgba(162,59,46,.10);color:#a23b2e;border:1px solid #a23b2e}
 .storenote{font-size:11px;color:var(--muted);text-align:center;margin:0 0 12px}
 /* ---- inline per-section validation ---- */
 .secmsg{margin-top:12px;border-radius:10px;padding:11px 14px;font-size:13px;line-height:1.7;border:1.5px solid;display:none}
@@ -226,6 +231,7 @@ header{position:sticky;top:0;z-index:40;background:var(--navy);color:var(--cream
 <div class="wrap">
   <div id="clientsView" style="display:none">
     <div class="viewtabs"><div class="viewtab" onclick="switchView('form')">Form <span class="tab-ar">النموذج</span></div><div class="viewtab active">Clients <span class="tab-ar">العملاء</span></div></div>
+    <div id="syncBadge" class="syncbadge off">Starting…</div>
     <div id="clientsList" class="clients"></div>
   </div>
   <div id="formView">
@@ -452,15 +458,113 @@ const PAIN_REF=[
 ];
 const LS_KEY='owlfit_clients_v2';
 let hasLS=true;try{const t='__t';localStorage.setItem(t,'1');localStorage.removeItem(t);}catch(e){hasLS=false;}
+/* ---- Firestore sync state ---- */
+let fsReady=false;          /* true once firebase is initialised   */
+let fsUnsub=null;           /* live listener handle                */
+const FS_COL='clients';     /* firestore collection name           */
+function setSyncBadge(state,msg){
+  const b=document.getElementById('syncBadge'); if(!b)return;
+  b.className='syncbadge '+state;
+  b.textContent=msg;
+}
 let clients=[];
-function loadStore(){if(!hasLS)return;try{clients=JSON.parse(localStorage.getItem(LS_KEY)||'[]');}catch(e){clients=[];}}
-function saveStore(){if(!hasLS)return;try{localStorage.setItem(LS_KEY,JSON.stringify(clients));}catch(e){toast('⚠ Storage full — export a PDF and delete old ones');}}
+function loadStore(){ /* local cache — instant paint, also offline fallback */
+  if(!hasLS)return;try{clients=JSON.parse(localStorage.getItem(LS_KEY)||'[]');}catch(e){clients=[];}}
+function cacheLocal(){ if(!hasLS)return; try{localStorage.setItem(LS_KEY,JSON.stringify(clients));}catch(e){} }
+function saveStore(){ cacheLocal(); }
+
+/* ---- push ONE client to Firestore ---- */
+/* Images stay local: base64 photos routinely exceed Firestore's 1MB doc cap. */
+/* Photos live in Firebase Storage; Firestore keeps only their URLs, so the
+   whole record (data + images) travels to every device. Base64 stays out of
+   Firestore because of the 1MB document cap.                                */
+function isDataUri(v){ return typeof v==='string' && v.startsWith('data:'); }
+
+/* upload any base64 images for this client, return {key:url} */
+function uploadImages(d){
+  const imgs = d._imgs||{};
+  const keys = Object.keys(imgs);
+  if(!fsReady || !window.storage || !keys.length) return Promise.resolve(imgs);
+  const out = {}; const jobs = [];
+  keys.forEach(k=>{
+    const v = imgs[k];
+    if(!isDataUri(v)){ out[k]=v; return; }        /* already a URL — keep it */
+    const ref = storage.ref('clients/'+d._id+'/'+k+'.jpg');
+    jobs.push(
+      ref.putString(v,'data_url')
+         .then(snap=>snap.ref.getDownloadURL())
+         .then(url=>{ out[k]=url; })
+         .catch(err=>{ console.error('img upload failed',k,err); out[k]=v; })
+    );
+  });
+  return Promise.all(jobs).then(()=>out);
+}
+
+/* strip base64 only as a last-resort fallback (upload unavailable) */
+function stripImages(d){ const c=JSON.parse(JSON.stringify(d));
+  const im=c._imgs||{}; const kept={};
+  Object.keys(im).forEach(k=>{ if(!isDataUri(im[k])) kept[k]=im[k]; });
+  c._imgs=kept; return c; }
+function pushClient(d){
+  if(!fsReady){ setSyncBadge('off','Offline — saved on this device'); return; }
+  const nPhotos = Object.keys(d._imgs||{}).filter(k=>isDataUri(d._imgs[k])).length;
+  setSyncBadge('sync', nPhotos ? ('Uploading '+nPhotos+' photo'+(nPhotos>1?'s':'')+'…') : 'Syncing…');
+  uploadImages(d).then(urlMap=>{
+    /* keep the URLs locally too, so we don't re-upload the same photo */
+    d._imgs = urlMap;
+    const i = clients.findIndex(c=>c._id===d._id); if(i>=0) clients[i]._imgs = urlMap;
+    cacheLocal();
+    const payload = stripImages(d);          /* now URL-only, tiny */
+    const bytes = new Blob([JSON.stringify(payload)]).size;
+    if(bytes>900000){ setSyncBadge('err','Record too large to sync'); toast('⚠ Record too big to sync'); return; }
+    return db.collection(FS_COL).doc(d._id).set(payload)
+      .then(()=>setSyncBadge('ok','Synced · photos included'));
+  }).catch(err=>{
+    console.error(err); setSyncBadge('err','Sync failed');
+    toast('⚠ Sync failed — saved on this device');
+  });
+}
+function removeClientRemote(id){
+  if(!fsReady)return;
+  db.collection(FS_COL).doc(id).delete().catch(err=>console.error(err));
+  /* clean up the client's photos so Storage doesn't fill with orphans */
+  if(window.storage){
+    storage.ref('clients/'+id).listAll()
+      .then(res=>res.items.forEach(it=>it.delete().catch(()=>{})))
+      .catch(()=>{});
+  }
+}
+
+/* ---- live listener: keeps every device in step ---- */
+function startSync(){
+  if(!fsReady)return;
+  if(fsUnsub)fsUnsub();
+  setSyncBadge('sync','Connecting…');
+  fsUnsub = db.collection(FS_COL).onSnapshot(snap=>{
+    const remote=[]; snap.forEach(doc=>remote.push(doc.data()));
+    /* photos arrive as Storage URLs; only fall back to a local copy if the
+       remote record has none yet (e.g. it was saved while offline)          */
+    const localImgs={}; clients.forEach(c=>{ if(c._imgs)localImgs[c._id]=c._imgs; });
+    remote.forEach(r=>{
+      const have = r._imgs && Object.keys(r._imgs).length;
+      if(!have && localImgs[r._id]) r._imgs = localImgs[r._id];
+      else r._imgs = r._imgs || {};
+    });
+    clients=remote;
+    cacheLocal();
+    renderClients();
+    setSyncBadge('ok','Synced · '+clients.length);
+  }, err=>{
+    console.error(err);
+    setSyncBadge('err','Sync error — using this device');
+  });
+}
 let current={_imgs:{}};
 function el(t,a={},kids=[]){const e=document.createElement(t);for(const k in a){if(k==='class')e.className=a[k];else if(k==='html')e.innerHTML=a[k];else e.setAttribute(k,a[k]);}kids.forEach(c=>e.appendChild(c));return e;}
 function renderForm(){
   const root=document.getElementById('formSections');root.innerHTML='';
   const sn=document.getElementById('storeNote');
-  sn.innerHTML=hasLS?'<div class="storenote">✅ Saved locally — clients stay on this device. · الحفظ الدائم مفعّل</div>':'<div class="storenote">⚠ Local save unavailable in this browser — use Export PDF per client. · استخدم تصدير PDF</div>';
+  sn.innerHTML='<div class="storenote">☁️ Clients and photos sync across all your devices. · العملاء والصور تتزامن على كل أجهزتك</div>';
   SCHEMA.forEach(sec=>{
     const body=el('div',{class:'sec-b'});
     let grid=el('div',{class:'grid'});
@@ -521,9 +625,9 @@ function applyBikeType(){
 }
 function fill(d){current._imgs=d._imgs?JSON.parse(JSON.stringify(d._imgs)):{};SCHEMA.forEach(sec=>sec.fields.forEach(f=>{const key=f[0],type=f[3];if(key==='sub:'||key==='hint:'||(key&&key.startsWith('reco:')))return;if(type==='img'){const tw=document.getElementById('thumb_'+key);if(tw)renderThumb(key,current._imgs[key],tw);return;}if(type&&type.startsWith('multi:')){const vals=(d[key]||'').split('، ');document.querySelectorAll(`[data-group="fld_${key}"]`).forEach(c=>c.checked=vals.includes(c.value));}else{const e=document.getElementById('fld_'+key);if(e)e.value=d[key]||'';}}));}
 function newFit(){current={_imgs:{}};fill({_imgs:{}});const t=document.getElementById('fld_date');if(t)t.value=new Date().toISOString().slice(0,10);document.querySelectorAll('.sec').forEach((s,i)=>s.classList.toggle('collapsed',i>0));window.scrollTo(0,0);applyBikeType();computeRecos();renderValidation();toast('New form ready · نموذج جديد');}
-function saveFit(){const d=collect();if(!d.name){toast('⚠ Enter the client name first');return;}d._id=current._id||('c'+Date.now());d._saved=new Date().toISOString();const i=clients.findIndex(c=>c._id===d._id);if(i>=0)clients[i]=d;else clients.push(d);current=d;saveStore();renderClients();toast('✅ Saved '+d.name);}
+function saveFit(){const d=collect();if(!d.name){toast('⚠ Enter the client name first');return;}d._id=current._id||('c'+Date.now());d._saved=new Date().toISOString();const i=clients.findIndex(c=>c._id===d._id);if(i>=0)clients[i]=d;else clients.push(d);current=d;saveStore();pushClient(d);renderClients();toast('✅ Saved '+d.name);}
 function loadFit(id){current=JSON.parse(JSON.stringify(clients.find(c=>c._id===id)||{_imgs:{}}));fill(current);switchView('form');document.querySelectorAll('.sec').forEach(s=>s.classList.remove('collapsed'));window.scrollTo(0,0);applyBikeType();computeRecos();renderValidation();toast('File opened · تم الفتح');}
-function delFit(id){if(!confirm('حذف هذا العميل نهائياً؟'))return;clients=clients.filter(c=>c._id!==id);saveStore();renderClients();toast('Deleted · تم الحذف');}
+function delFit(id){if(!confirm('حذف هذا العميل نهائياً؟'))return;clients=clients.filter(c=>c._id!==id);saveStore();removeClientRemote(id);renderClients();toast('Deleted · تم الحذف');}
 function renderClients(){const list=document.getElementById('clientsList');list.innerHTML='';if(!clients.length){list.appendChild(el('div',{class:'empty',html:'No saved clients yet.<br>Start a new fit and save it.<br><span style="font-size:11px;color:#8b93a5">ابدأ فت جديد واحفظه</span>'}));return;}clients.slice().reverse().forEach(c=>{const row=el('div',{class:'client'});const info=el('div',{});info.appendChild(el('div',{class:'nm'},[document.createTextNode(c.name||'—')]));info.appendChild(el('div',{class:'dt'},[document.createTextNode((c.date||'')+' · '+(c.disciplines||''))]));const acts=el('div',{class:'acts'});const b1=el('button',{class:'minibtn load'});b1.textContent='Open';b1.onclick=()=>loadFit(c._id);const b2=el('button',{class:'minibtn pdf'});b2.textContent='PDF';b2.onclick=()=>{loadFit(c._id);setTimeout(exportPDF,350);};const b3=el('button',{class:'minibtn del'});b3.textContent='Delete';b3.onclick=()=>delFit(c._id);acts.append(b1,b2,b3);row.append(info,acts);list.appendChild(row);});}
 function switchView(v){document.getElementById('valFab').style.display=v==='form'?'flex':'none';document.getElementById('formView').style.display=v==='form'?'block':'none';document.getElementById('clientsView').style.display=v==='clients'?'block':'none';document.getElementById('actionBar').style.display=v==='form'?'flex':'none';if(v==='clients')renderClients();window.scrollTo(0,0);}
 let toastT;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200);}
@@ -985,9 +1089,9 @@ computeRecos();
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
 
 <script>
-  // Firebase configuration for OwlFit
   const firebaseConfig = {
     apiKey: "AIzaSyCgrl91Gzbd4mvjqtYEt--cEtf23w5GpAk",
     authDomain: "owlfit-db.firebaseapp.com",
@@ -998,9 +1102,19 @@ computeRecos();
     measurementId: "G-JPG56W3WHZ"
   };
 
-  // Initialize Firebase & Firestore
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+  try {
+    firebase.initializeApp(firebaseConfig);
+    window.db = firebase.firestore();
+    window.storage = firebase.storage();
+    /* keep working when the studio wifi drops */
+    db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+    fsReady = true;
+    startSync();
+  } catch (e) {
+    console.error('Firebase init failed:', e);
+    fsReady = false;
+    setSyncBadge('off','Offline — this device only');
+  }
 </script>
 </body>
 </html>
