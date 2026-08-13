@@ -51,11 +51,11 @@ header{position:sticky;top:0;z-index:40;background:var(--navy);color:var(--cream
 .subhead .sub-en{font-family:var(--lat);font-size:14px;color:var(--gold);font-weight:700;direction:ltr}
 .subhead .sub-ar{font-family:var(--ar);font-size:11px;color:var(--muted);font-weight:600}
 .imgf{grid-column:1 / -1;display:flex;flex-direction:column;gap:6px}
-.drop{border:2px dashed var(--line);border-radius:11px;padding:16px;text-align:center;cursor:pointer;transition:.15s;background:#fcfaf5;position:relative;min-height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.drop{border:2px dashed var(--line);border-radius:11px;padding:16px;text-align:center;cursor:default;transition:.15s;background:#fcfaf5;position:relative;min-height:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
 .drop:active{border-color:var(--gold)}
 .drop .ic{font-size:24px}
 .drop .t{font-size:12px;color:var(--muted)}
-.drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop input[type=file]{display:none}
 .thumb{position:relative;display:inline-block;margin-top:8px}
 .thumb img{max-width:130px;max-height:130px;border-radius:9px;border:1px solid var(--line)}
 .thumb .rm{position:absolute;top:-8px;right:-8px;background:#a33;color:#fff;border:none;width:24px;height:24px;border-radius:50%;font-size:14px;cursor:pointer;line-height:1}
@@ -144,6 +144,13 @@ header{position:sticky;top:0;z-index:40;background:var(--navy);color:var(--cream
 .fieldhint{grid-column:1/-1;background:#fffdf3;border:1px solid var(--gold);border-radius:9px;padding:9px 12px;line-height:1.5;color:#6a5015}
 .fieldhint .fh-en{display:block;font-family:var(--lat);font-size:11.5px;font-weight:500;direction:ltr;text-align:right}
 .fieldhint .fh-ar{display:block;font-family:var(--ar2);font-size:10px;color:#8b7340;margin-top:2px}
+.imgbtns{display:flex;gap:8px;margin-top:10px;width:100%}
+.imgbtn{flex:1;background:var(--navy);color:var(--cream);border:none;border-radius:10px;padding:11px 8px;
+  font-family:var(--lat);font-weight:600;font-size:12.5px;cursor:pointer;line-height:1.25;display:flex;
+  flex-direction:column;align-items:center;gap:2px}
+.imgbtn span{font-family:var(--ar2);font-size:9.5px;font-weight:500;opacity:.75}
+.imgbtn.alt{background:var(--gold);color:var(--navy)}
+.imgbtn.alt span{opacity:.8}
 .storenote{font-size:11px;color:var(--muted);text-align:center;margin:0 0 12px}
 /* ---- inline per-section validation ---- */
 .secmsg{margin-top:12px;border-radius:10px;padding:11px 14px;font-size:13px;line-height:1.7;border:1.5px solid;display:none}
@@ -452,15 +459,17 @@ const PAIN_REF=[
 ];
 const LS_KEY='owlfit_clients_v2';
 let hasLS=true;try{const t='__t';localStorage.setItem(t,'1');localStorage.removeItem(t);}catch(e){hasLS=false;}
+
 let clients=[];
 function loadStore(){if(!hasLS)return;try{clients=JSON.parse(localStorage.getItem(LS_KEY)||'[]');}catch(e){clients=[];}}
 function saveStore(){if(!hasLS)return;try{localStorage.setItem(LS_KEY,JSON.stringify(clients));}catch(e){toast('⚠ Storage full — export a PDF and delete old ones');}}
+
 let current={_imgs:{}};
 function el(t,a={},kids=[]){const e=document.createElement(t);for(const k in a){if(k==='class')e.className=a[k];else if(k==='html')e.innerHTML=a[k];else e.setAttribute(k,a[k]);}kids.forEach(c=>e.appendChild(c));return e;}
 function renderForm(){
   const root=document.getElementById('formSections');root.innerHTML='';
   const sn=document.getElementById('storeNote');
-  sn.innerHTML=hasLS?'<div class="storenote">✅ Saved locally — clients stay on this device. · الحفظ الدائم مفعّل</div>':'<div class="storenote">⚠ Local save unavailable in this browser — use Export PDF per client. · استخدم تصدير PDF</div>';
+  sn.innerHTML=hasLS?'<div class="storenote">✅ Saved on this device — clients stay here. · الحفظ على هذا الجهاز</div>':'<div class="storenote">⚠ Local save unavailable in this browser — use Export PDF per client. · استخدم تصدير PDF</div>';
   SCHEMA.forEach(sec=>{
     const body=el('div',{class:'sec-b'});
     let grid=el('div',{class:'grid'});
@@ -472,7 +481,25 @@ function renderForm(){
       const wrap=el('div',Object.assign({class:'f'+((type==='textarea'||type==='img'||(type&&type.startsWith('multi')))?' full':'')},grpAttr));
       wrap.appendChild(el('label',{html:`<span class="en-main">${en}</span> <span class="ar-sub">${ar}</span>`}));
       let inp;
-      if(type==='img'){wrap.classList.add('imgf');const drop=el('div',{class:'drop'});drop.appendChild(el('div',{class:'ic',html:'📷'}));drop.appendChild(el('div',{class:'t',html:'Tap to take or choose a photo · اضغط لالتقاط صورة'}));const fi=el('input',{type:'file',accept:'image/*'});fi.setAttribute('capture','environment');const tw=el('div',{id:'thumb_'+key});fi.onchange=e=>handleImg(e,key,tw);drop.appendChild(fi);wrap.appendChild(drop);
+      if(type==='img'){wrap.classList.add('imgf');
+        const tw=el('div',{id:'thumb_'+key});
+        /* two explicit inputs: one opens the camera, one opens the gallery */
+        const camIn=el('input',{type:'file',accept:'image/*'});camIn.setAttribute('capture','environment');
+        camIn.style.display='none';camIn.onchange=e=>handleImg(e,key,tw);
+        const libIn=el('input',{type:'file',accept:'image/*'});   /* no capture = gallery/files */
+        libIn.style.display='none';libIn.onchange=e=>handleImg(e,key,tw);
+        const drop=el('div',{class:'drop'});
+        drop.appendChild(el('div',{class:'ic',html:'📷'}));
+        drop.appendChild(el('div',{class:'t',html:'Add a photo · أضف صورة'}));
+        const btns=el('div',{class:'imgbtns'});
+        const bCam=el('button',{class:'imgbtn',type:'button',html:'📸 Take photo<span>التقاط صورة</span>'});
+        bCam.onclick=ev=>{ev.preventDefault();ev.stopPropagation();camIn.click();};
+        const bLib=el('button',{class:'imgbtn alt',type:'button',html:'🖼️ Choose from gallery<span>اختر من الملفات</span>'});
+        bLib.onclick=ev=>{ev.preventDefault();ev.stopPropagation();libIn.click();};
+        btns.append(bCam,bLib);
+        drop.appendChild(btns);
+        drop.appendChild(camIn);drop.appendChild(libIn);
+        wrap.appendChild(drop);
         if(REF_IMAGES[key]){const db=el('button',{class:'draw-btn'});db.innerHTML='✏️ Draw on reference image';db.onclick=(ev)=>{ev.preventDefault();openDraw(key,ar,tw);};wrap.appendChild(db);}
         wrap.appendChild(tw);grid.appendChild(wrap);return;}
       else if(type==='textarea'){inp=el('textarea',{id:'fld_'+key});}
