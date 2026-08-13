@@ -982,5 +982,25 @@ rydCalc();   /* runs after the consts above are initialised */
 computeRecos();
 
 </script>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // Firebase configuration for OwlFit
+  const firebaseConfig = {
+    apiKey: "AIzaSyCgrl91Gzbd4mvjqtYEt--cEtf23w5GpAk",
+    authDomain: "owlfit-db.firebaseapp.com",
+    projectId: "owlfit-db",
+    storageBucket: "owlfit-db.firebasestorage.app",
+    messagingSenderId: "650645579813",
+    appId: "1:650645579813:web:f0696fc497b643fa1637cc",
+    measurementId: "G-JPG56W3WHZ"
+  };
+
+  // Initialize Firebase & Firestore
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+</script>
 </body>
 </html>
